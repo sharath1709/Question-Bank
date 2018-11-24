@@ -47,7 +47,7 @@ def createHighlight(x1, y1, x2, y2, meta, color = [1, 1, 0]):
 	return newHighlight
 
 def addHighlightToPage(highlight, page, output):
-	highlight_ref = output._addObject(highlight);
+	highlight_ref = output._addObject(highlight)
 
 	if "/Annots" in page:
 		page[NameObject("/Annots")].append(highlight_ref)
@@ -59,21 +59,34 @@ pdfInput = PdfFileReader(open(filename, "rb"))
 pdfOutput = PdfFileWriter()
 
 page1 = pdfInput.getPage(0)
-# print(page1)
-# annots = page1[NameObject("/Annots")]
+print([method_name for method_name in dir(pdfInput) if callable(getattr(pdfInput, method_name))])
+print(pdfInput.resolvedObjects)
+print(pdfInput)
+print('\n')
+print(page1)
+print('\n')
+annots = page1[NameObject("/Annots")]
+print (annots)
+# for ann in annots:
+# 	print('\n')
+# 	print(ann.getObject())
+# 	if "/P" in ann.getObject():
+# 		print(ann.getObject()["/P"].getObject() == page1)
+# print('\n')
 # print(annots[0].getObject())
+# print('\n')
 # print(annots[1].getObject())
 
-highlight = createHighlight(400, 400, 800, 500, {
-	"author": "nagendra",
-	"contents": "Bla-bla-bla"
-})
+# highlight = createHighlight(400, 400, 800, 500, {
+# 	"author": "nagendra",
+# 	"contents": "Bla-bla-bla"
+# })
 
-print(highlight)
+# print(highlight)
 
-addHighlightToPage(highlight, page1, pdfOutput)
+# addHighlightToPage(highlight, page1, pdfOutput)
 
-pdfOutput.addPage(page1)
+# pdfOutput.addPage(page1)
 
-outputStream = open("output.pdf", "wb")
-pdfOutput.write(outputStream)
+# outputStream = open("output.pdf", "wb")
+# pdfOutput.write(outputStream)

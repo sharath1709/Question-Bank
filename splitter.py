@@ -1,6 +1,9 @@
 import types, sys, os, re
 from binascii import b2a_hex
 from PIL import Image
+import imghdr
+
+from pylatexenc.latexencode import utf8tolatex
 
 from pdf2image import convert_from_path
 
@@ -19,9 +22,10 @@ from pdfminer.converter import PDFPageAggregator
 from pdfminer.pdfinterp import PDFPageInterpreter
 from pdfminer.pdfinterp import PDFResourceManager
 from pdfminer.pdfpage import PDFPage
-from pdfminer.layout import LTTextBoxHorizontal, LTTextLineHorizontal, LTImage, LTFigure
+from pdfminer.layout import *
 
-question_regex_patterns = ['^\s*\d+\.\s', '^\s*\d+\.\)', '^\s*\d+\)']
+question_regex_patterns = ['^\s*\d+\.\s', '^\s*\d+\.\)', '^\s*\d+\)', \
+							'^\s*[a-zA-Z]\.\s', '^\s*[a-zA-Z]\.\)', '^\s*[a-zA-Z]\)']
 
 def get_PDF_layout(pdf_path):
 	try:
@@ -81,6 +85,28 @@ def get_text_from_box(layout, x1, x2, y1, y2):
 		for node in layout:
 			text = text + str(get_text_from_box(node, x1, x2, y1, y2))
 		return text
+
+def get_LT_list_from_box(layout, x1, x2, y1, y2):
+
+	LT_list = []
+	if (y1 > y2):
+		swap(y1, y2)
+	if (x1 > x2):
+		swap(x1, x2)
+	if not hasattr(layout, '__iter__'):
+		if isinstance(layout, LTChar) or isinstance(layout, LTImage) or isinstance(layout, LTFigure):
+			x = (layout.bbox[0] + layout.bbox[2])/2.0
+			y = (layout.bbox[1] + layout.bbox[3])/2.0
+			if (x <= x2 and x >= x1 and y >= y1 and y <= y2):
+				return [layout]
+			else:
+				return []
+		else:
+			return []
+	else:
+		for node in layout:
+			LT_list = LT_list + get_LT_list_from_box(node, x1, x2, y1, y2)
+		return LT_list
 
 def print_layout(file, layout, numTabs):
 	for x in range(numTabs):
@@ -185,9 +211,11 @@ def determine_image_type (stream_first_4_bytes):
     """Find out the image file type based on the magic number comparison of the first 4 (or 2) bytes"""
     file_type = None
     bytes_as_hex = b2a_hex(stream_first_4_bytes)
+    # print(bytes_as_hex)
     if bytes_as_hex.startswith('ffd8'):
         file_type = '.jpeg'
     elif bytes_as_hex == '89504e47':
+    	 # or bytes_as_hex == '789ced9d'
         file_type = '.png'
     elif bytes_as_hex == '47494638':
         file_type = '.gif'
@@ -207,22 +235,6 @@ def save_image (lt_image, page_number, images_folder):
                 if write_file(images_folder, file_name, file_stream, flags='wb'):
                     result = file_name
 	return result
-
-def create_popup(x1, y1, x2, y2):
-	new_popup = DictionaryObject()
-	new_popup.update({
-		NameObject("/F"): NumberObject(28),
-		NameObject("/Type"): NameObject("/Annot"),
-		NameObject("/Subtype"): NameObject("/Popup"),
-		# NameObject("/Parent"): annot,
-		NameObject("/Rect"): ArrayObject([
-			FloatObject(x1),
-			FloatObject(y1),
-			FloatObject(x2),
-			FloatObject(y2)
-		]),
-	})
-	return new_popup
 
 # x1, y1 starts in bottom left corner
 def create_annot_box(x1, y1, x2, y2, meta, color = [1, 0, 0]):
@@ -245,17 +257,10 @@ def create_annot_box(x1, y1, x2, y2, meta, color = [1, 0, 0]):
 			FloatObject(y2)
 		]),
 	})
-	# new_popup = create_popup(new_annot)
-	# new_annot.update({
-	# 	NameObject("/Popup"): new_popup,
-	# })
 	return new_annot
 
 def add_annot_to_page(annot, page, output):
-	# annot.update({
-	# 	NameObject("/P"): page
-	# })
-	annot_ref = output._addObject(annot)
+	annot_ref = output._addObject(annot);
 
 	if "/Annots" in page:
 		page[NameObject("/Annots")].append(annot_ref)
@@ -270,7 +275,6 @@ def add_annots(input_file, annot_maps, output_file = 'output.pdf'):
 		annot_map = annot_maps[i]
 		for annot in annot_map:
 			add_annot_to_page(annot, page, pdfOutput)
-			# add_annot_to_page(annot["/Popup"], page, pdfOutput)
 		pdfOutput.addPage(page)
 	outputStream = open(output_file, "wb")
 	pdfOutput.write(outputStream)
@@ -312,18 +316,61 @@ def get_annots_for_ques(ques_boxes, meta = {"author": "", "contents": "question"
 		ques_annots.append(page_annots)
 	return ques_annots
 
+def get_latex_from_LT(LT_list, page_number):
+	latex_str = ""
+
+	prevfontname = ""
+	prevfontstyle = ""
+
+	for i in range(len(LT_list)):
+		if isinstance(LT_list[i], LTChar):
+			attr = LT_list[i].fontname.split(",")
+			if(prevfontname != attr[0]):
+				# latex_str += "\\fontfamily{" + attr[0] + "}\\selectfont "
+				prevfontname = attr[0]
+			# if(len(attr) > 1 and prevfontstyle)
+			latex_str += utf8tolatex(LT_list[i].get_text())
+		elif isinstance(LT_list[i], LTFigure) or isinstance(LT_list[i], LTImage):
+			img_name = save_image(LT_list[i], page_number, "images")
+			if img_name:
+				latex_str += "\\begin{figure}\\includegraphics[width=\\linewidth]{" + str(img_name) + "}\\end{figure}"
+	return latex_str
+
+def auto_ques_annot(layout, regs, infile, outfile):
+	lines = get_lines_by_pages(layout)
+	que_lines = get_question_lines(lines, regs)
+	ques_boxes = get_ques_Bboxes(lines, que_lines)
+	ques_annots = get_annots_for_ques(ques_boxes)
+	add_annots(infile, ques_annots, outfile)
+
+def get_latex_from_ann_file(pdf_path):
+	pdfInput = PdfFileReader(open(pdf_path, "rb"))
+	latex_list = []
+	layout = get_PDF_layout(pdf_path)
+	for i in range(pdfInput.getNumPages()):
+		page = pdfInput.getPage(i)
+		if "/Annots" in page:
+			annot_list = page[NameObject("/Annots")]
+			for annot in annot_list:
+				ann = annot.getObject()
+				if ann["/Subtype"] == NameObject("/Square"):
+					LT_list = get_LT_list_from_box(layout[i], ann["/Rect"][0], ann["/Rect"][2], ann["/Rect"][1], ann["/Rect"][3])
+					latex_list.append(get_latex_from_LT(LT_list, i))
+	return latex_list
+
 if __name__ == '__main__':
 	if len(sys.argv) > 1:
 		pdf_path = sys.argv[1]
 	layout = get_PDF_layout(pdf_path)
 	if not hasattr(layout, '__iter__'):
 		sys.exit(layout)
-	file = open("out.txt", "w")
-	print_layout(file, layout, 0)
-	lines = get_lines_by_pages(layout)
+	# file = open("out.txt", "w")
+	# print_layout(file, layout, 0)
 	regs = [re.compile(pattern) for pattern in question_regex_patterns]
-	que_lines = get_question_lines(lines, regs)
-	# print(que_lines)
-	ques_boxes = get_ques_Bboxes(lines, que_lines)
-	ques_annots = get_annots_for_ques(ques_boxes)
-	add_annots(pdf_path, ques_annots, 'test_split.pdf')
+	auto_ques_annot(layout, regs, pdf_path, 'test_split.pdf')
+	pdf_path = 'test_split.pdf'
+	latex_list = get_latex_from_ann_file(pdf_path)
+	file = open("muout.txt", "w")
+	for latex in latex_list:
+		file.write(latex.encode('utf-8'))
+		file.write('\n')
