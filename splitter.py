@@ -208,6 +208,22 @@ def save_image (lt_image, page_number, images_folder):
                     result = file_name
 	return result
 
+def create_popup(x1, y1, x2, y2):
+	new_popup = DictionaryObject()
+	new_popup.update({
+		NameObject("/F"): NumberObject(28),
+		NameObject("/Type"): NameObject("/Annot"),
+		NameObject("/Subtype"): NameObject("/Popup"),
+		# NameObject("/Parent"): annot,
+		NameObject("/Rect"): ArrayObject([
+			FloatObject(x1),
+			FloatObject(y1),
+			FloatObject(x2),
+			FloatObject(y2)
+		]),
+	})
+	return new_popup
+
 # x1, y1 starts in bottom left corner
 def create_annot_box(x1, y1, x2, y2, meta, color = [1, 0, 0]):
 	new_annot = DictionaryObject()
@@ -229,10 +245,17 @@ def create_annot_box(x1, y1, x2, y2, meta, color = [1, 0, 0]):
 			FloatObject(y2)
 		]),
 	})
+	# new_popup = create_popup(new_annot)
+	# new_annot.update({
+	# 	NameObject("/Popup"): new_popup,
+	# })
 	return new_annot
 
 def add_annot_to_page(annot, page, output):
-	annot_ref = output._addObject(annot);
+	# annot.update({
+	# 	NameObject("/P"): page
+	# })
+	annot_ref = output._addObject(annot)
 
 	if "/Annots" in page:
 		page[NameObject("/Annots")].append(annot_ref)
@@ -247,17 +270,20 @@ def add_annots(input_file, annot_maps, output_file = 'output.pdf'):
 		annot_map = annot_maps[i]
 		for annot in annot_map:
 			add_annot_to_page(annot, page, pdfOutput)
+			# add_annot_to_page(annot["/Popup"], page, pdfOutput)
 		pdfOutput.addPage(page)
 	outputStream = open(output_file, "wb")
 	pdfOutput.write(outputStream)
 
-def get_bounding_box(lines):
+def get_bounding_box(lines, next_line = None):
 	x0, y0, x1, y1 = lines[0].bbox
 	for line in lines:
 		x0 = min(x0, line.bbox[0])
 		y0 = min(y0, line.bbox[1])
 		x1 = max(x1, line.bbox[2])
 		y1 = max(y1, line.bbox[3])
+	if next_line:
+		y0 = next_line.bbox[3]
 	return [x0, y0, x1, y1]
 
 def get_ques_Bboxes(lines, que_lines):
@@ -268,7 +294,7 @@ def get_ques_Bboxes(lines, que_lines):
 		page_que_lines = que_lines[i]
 		for j in range(len(page_que_lines)):
 			if j != len(page_que_lines)-1:
-				page_ques_boxes.append(get_bounding_box(page_lines[page_lines.index(page_que_lines[j][0]): page_lines.index(page_que_lines[j+1][0])]))
+				page_ques_boxes.append(get_bounding_box(page_lines[page_lines.index(page_que_lines[j][0]): page_lines.index(page_que_lines[j+1][0])], page_que_lines[j+1][0]))
 			else:
 				page_ques_boxes.append(get_bounding_box(page_lines[page_lines.index(page_que_lines[j][0]):]))
 		ques_boxes.append(page_ques_boxes)
@@ -297,12 +323,7 @@ if __name__ == '__main__':
 	lines = get_lines_by_pages(layout)
 	regs = [re.compile(pattern) for pattern in question_regex_patterns]
 	que_lines = get_question_lines(lines, regs)
+	# print(que_lines)
 	ques_boxes = get_ques_Bboxes(lines, que_lines)
 	ques_annots = get_annots_for_ques(ques_boxes)
-	# for page_ques in que_lines:
-	# 	for ques in page_ques:
-	# 		print(ques)
-	# for page_boxes in ques_boxes:
-	# 	for box in page_boxes:
-	# 		print(box)
 	add_annots(pdf_path, ques_annots, 'test_split.pdf')
