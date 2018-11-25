@@ -1,4 +1,4 @@
-import types, sys, os, re
+import types, sys, os, re, io
 from binascii import b2a_hex
 from PIL import Image
 import imghdr
@@ -194,47 +194,76 @@ def get_image_locations(layout):
 	return []
 
 def write_file (folder, filename, filedata, flags='w'):
-    """Write the file data to the folder and filename combination
-    (flags: 'w' for write text, 'wb' for write binary, use 'a' instead of 'w' for append)"""
-    result = False
-    if os.path.isdir(folder):
-        try:
-            file_obj = open(os.path.join(folder, filename), flags)
-            file_obj.write(filedata)
-            file_obj.close()
-            result = True
-        except IOError:
-            pass
-    return result
+	"""Write the file data to the folder and filename combination
+	(flags: 'w' for write text, 'wb' for write binary, use 'a' instead of 'w' for append)"""
+	result = False
+	if os.path.isdir(folder):
+		try:
+			file_obj = open(os.path.join(folder, filename), flags)
+			file_obj.write(filedata)
+			file_obj.close()
+			result = True
+		except IOError:
+			pass
+	return result
 
 def determine_image_type (stream_first_4_bytes):
-    """Find out the image file type based on the magic number comparison of the first 4 (or 2) bytes"""
-    file_type = None
-    bytes_as_hex = b2a_hex(stream_first_4_bytes)
-    # print(bytes_as_hex)
-    if bytes_as_hex.startswith('ffd8'):
-        file_type = '.jpeg'
-    elif bytes_as_hex == '89504e47':
-    	 # or bytes_as_hex == '789ced9d'
-        file_type = '.png'
-    elif bytes_as_hex == '47494638':
-        file_type = '.gif'
-    elif bytes_as_hex.startswith('424d'):
-        file_type = '.bmp'
-    return file_type
+	"""Find out the image file type based on the magic number comparison of the first 4 (or 2) bytes"""
+	file_type = None
+	bytes_as_hex = b2a_hex(stream_first_4_bytes)
+	# print(bytes_as_hex)
+	if bytes_as_hex.startswith('ffd8'):
+		file_type = '.jpeg'
+	elif bytes_as_hex == '89504e47':
+		 # or bytes_as_hex == '789ced9d'
+		file_type = '.png'
+	elif bytes_as_hex == '47494638':
+		file_type = '.gif'
+	elif bytes_as_hex.startswith('424d'):
+		file_type = '.bmp'
+	return file_type
 
-def save_image (lt_image, page_number, images_folder):
-    """Try to save the image data from this LTImage object, and return the file name, if successful"""
-    result = None
-    if lt_image.stream:
-        file_stream = lt_image.stream.get_rawdata()
-        if file_stream:
-            file_ext = determine_image_type(file_stream[0:4])
-            if file_ext:
-                file_name = ''.join([str(page_number), '_', lt_image.name, file_ext])
-                if write_file(images_folder, file_name, file_stream, flags='wb'):
-                    result = file_name
+def save_image (lt_image, page_number, images_folder, pypdf_obj = None):
+	"""Try to save the image data from this LTImage object, and return the file name, if successful"""
+	result = None
+	if lt_image.stream:
+		file_stream = lt_image.stream.get_rawdata()
+		if file_stream:
+			file_ext = determine_image_type(file_stream[0:4])
+			if file_ext:
+				file_name = ''.join([str(page_number), '_', lt_image.name, file_ext])
+				if write_file(images_folder, file_name, file_stream, flags='wb'):
+					result = file_name
+			elif pypdf_obj:
+				try:
+					pypdf_obj = pypdf_obj["/"+lt_image.name]
+					size = (pypdf_obj['/Width'], pypdf_obj['/Height'])
+					data = pypdf_obj.getData()
+					if pypdf_obj['/ColorSpace'] == '/DeviceRGB':
+						mode = "RGB"
+					else:
+						mode = "P"
+					img = Image.frombytes(mode, size, data)
+					file_name = ''.join([str(page_number), '_', lt_image.name, '.png'])
+					form = Image.registered_extensions()['.png']
+					fp = io.BytesIO()
+					img.save(fp, form)
+					if write_file(images_folder, file_name, fp.getvalue(), flags='wb'):
+						result = file_name
+				except Exception as e:
+					print(e)
+					return None
 	return result
+
+def get_pypdf_images(pdf_path):
+	pdfInput = PdfFileReader(open(pdf_path, 'rb'))
+	return get_image_res(pdfInput)
+
+def get_image_res(pdfInput):
+	for i in range(pdfInput.getNumPages()):
+		page = pdfInput.getPage(i)
+		if '/XObject' in page['/Resources']:
+			return page['/Resources']['/XObject'].getObject()
 
 # x1, y1 starts in bottom left corner
 def create_annot_box(x1, y1, x2, y2, meta, color = [1, 0, 0]):
@@ -316,7 +345,7 @@ def get_annots_for_ques(ques_boxes, meta = {"author": "", "contents": "question"
 		ques_annots.append(page_annots)
 	return ques_annots
 
-def get_latex_from_LT(LT_list, page_number):
+def get_latex_from_LT(LT_list, page_number, image_res = None):
 	latex_str = ""
 
 	prevfontname = ""
@@ -331,7 +360,7 @@ def get_latex_from_LT(LT_list, page_number):
 			# if(len(attr) > 1 and prevfontstyle)
 			latex_str += utf8tolatex(LT_list[i].get_text())
 		elif isinstance(LT_list[i], LTFigure) or isinstance(LT_list[i], LTImage):
-			img_name = save_image(LT_list[i], page_number, "images")
+			img_name = save_image(LT_list[i], page_number, "images", image_res)
 			if img_name:
 				latex_str += "\\begin{figure}\\includegraphics[width=\\linewidth]{" + str(img_name) + "}\\end{figure}"
 	return latex_str
@@ -345,6 +374,7 @@ def auto_ques_annot(layout, regs, infile, outfile):
 
 def get_latex_from_ann_file(pdf_path):
 	pdfInput = PdfFileReader(open(pdf_path, "rb"))
+	image_res = get_image_res(pdfInput)
 	latex_list = []
 	layout = get_PDF_layout(pdf_path)
 	for i in range(pdfInput.getNumPages()):
@@ -355,7 +385,7 @@ def get_latex_from_ann_file(pdf_path):
 				ann = annot.getObject()
 				if ann["/Subtype"] == NameObject("/Square"):
 					LT_list = get_LT_list_from_box(layout[i], ann["/Rect"][0], ann["/Rect"][2], ann["/Rect"][1], ann["/Rect"][3])
-					latex_list.append(get_latex_from_LT(LT_list, i))
+					latex_list.append(get_latex_from_LT(LT_list, i, image_res))
 	return latex_list
 
 if __name__ == '__main__':
