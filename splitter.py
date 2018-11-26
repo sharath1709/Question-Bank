@@ -412,20 +412,19 @@ if __name__ == '__main__':
 	if len(sys.argv) > 1:
 		pdf_path = sys.argv[1]
 	layout = get_PDF_layout(pdf_path)
-	# pypdf_images = get_pypdf_images(pdf_path)
-	# print(pypdf_images)
-	# if not hasattr(layout, '__iter__'):
-	# 	sys.exit(layout)
-	# for i in range(len(layout)):
-	# 	page = layout[i]
-	# 	image_list = get_image_locations(page)
-	# 	for img in image_list:
-	# 		print(save_image(img, i, "images", pypdf_images))
-	# file = open("out.txt", "w")
-	# print_layout(file, layout, 0)
-	regs = [re.compile(pattern) for pattern in question_regex_patterns]
-	auto_ques_annot(layout, regs, pdf_path, 'test_split.pdf')
-	pdf_path = 'test_split.pdf'
-	latex_list = get_latex_from_ann_file(pdf_path)
-	file = open("muout.txt", "w")
-	file.write("\n\\newline\n".join([latex.encode('utf-8') for latex in latex_list]))
+	
+	if len(sys.argv) > 2:
+		if sys.argv[2] == "0":
+			regs = [re.compile(pattern) for pattern in question_regex_patterns]
+			auto_ques_annot(layout, regs, pdf_path, 'test_split.pdf')
+		elif sys.argv[2] == "1":
+			latex_list = get_latex_from_ann_file(pdf_path)
+			file = open("muout.txt", "w")
+			file.write("\n\\bigskip\n\\newline\n".join([latex.encode('utf-8') for latex in latex_list]))
+	else:
+		regs = [re.compile(pattern) for pattern in question_regex_patterns]
+		auto_ques_annot(layout, regs, pdf_path, 'test_split.pdf')
+		pdf_path = 'test_split.pdf'
+		latex_list = get_latex_from_ann_file(pdf_path)
+		file = open("muout.txt", "w")
+		file.write("\n\\bigskip\n\\newline\n".join([latex.encode('utf-8') for latex in latex_list]))
