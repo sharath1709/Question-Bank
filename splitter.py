@@ -1,7 +1,6 @@
 import types, sys, os, re, io
 from binascii import b2a_hex
 from PIL import Image
-import imghdr
 
 from pylatexenc.latexencode import utf8tolatex
 
@@ -101,6 +100,8 @@ def get_LT_list_from_box(layout, x1, x2, y1, y2):
 				return [layout]
 			else:
 				return []
+		# elif isinstance(layout, LTAnno):
+		# 	return [layout]
 		else:
 			return []
 	else:
@@ -353,16 +354,35 @@ def get_latex_from_LT(LT_list, page_number, image_res = None):
 
 	for i in range(len(LT_list)):
 		if isinstance(LT_list[i], LTChar):
-			attr = LT_list[i].fontname.split(",")
+			attr = re.split(",|-", LT_list[i].fontname)
 			if(prevfontname != attr[0]):
 				# latex_str += "\\fontfamily{" + attr[0] + "}\\selectfont "
 				prevfontname = attr[0]
-			# if(len(attr) > 1 and prevfontstyle)
+			if(len(attr) > 1 and prevfontstyle != attr[1]):
+				if prevfontstyle:
+					latex_str += "}"
+				prevfontstyle = attr[1]
+				if prevfontstyle.startswith("Bold"):
+					latex_str += "\\textbf{"
+				elif prevfontstyle.startswith("Italic"):
+					latex_str += "\\textit{"
+			elif len(attr) == 1:
+				if prevfontstyle:
+					latex_str += "}"
+					prevfontstyle = ""
 			latex_str += utf8tolatex(LT_list[i].get_text())
 		elif isinstance(LT_list[i], LTFigure) or isinstance(LT_list[i], LTImage):
+			if prevfontstyle:
+				latex_str += "}"
+				prevfontstyle = ""
 			img_name = save_image(LT_list[i], page_number, "images", image_res)
 			if img_name:
 				latex_str += "\\begin{figure}\\includegraphics[width=\\linewidth]{" + str(img_name) + "}\\end{figure}"
+		# elif isinstance(LT_list[i], LTAnno):
+		# 	latex_str += "\\newline\n"
+	if prevfontstyle:
+		latex_str += "}"
+		prevfontstyle = ""
 	return latex_str
 
 def auto_ques_annot(layout, regs, infile, outfile):
@@ -385,15 +405,22 @@ def get_latex_from_ann_file(pdf_path):
 				ann = annot.getObject()
 				if ann["/Subtype"] == NameObject("/Square"):
 					LT_list = get_LT_list_from_box(layout[i], ann["/Rect"][0], ann["/Rect"][2], ann["/Rect"][1], ann["/Rect"][3])
-					latex_list.append(get_latex_from_LT(LT_list, i, image_res))
+					latex_list.append(get_latex_from_LT(LT_list, i, image_res).replace("\\textrightarrow", "\\rightarrow"))
 	return latex_list
 
 if __name__ == '__main__':
 	if len(sys.argv) > 1:
 		pdf_path = sys.argv[1]
 	layout = get_PDF_layout(pdf_path)
-	if not hasattr(layout, '__iter__'):
-		sys.exit(layout)
+	# pypdf_images = get_pypdf_images(pdf_path)
+	# print(pypdf_images)
+	# if not hasattr(layout, '__iter__'):
+	# 	sys.exit(layout)
+	# for i in range(len(layout)):
+	# 	page = layout[i]
+	# 	image_list = get_image_locations(page)
+	# 	for img in image_list:
+	# 		print(save_image(img, i, "images", pypdf_images))
 	# file = open("out.txt", "w")
 	# print_layout(file, layout, 0)
 	regs = [re.compile(pattern) for pattern in question_regex_patterns]
@@ -401,6 +428,4 @@ if __name__ == '__main__':
 	pdf_path = 'test_split.pdf'
 	latex_list = get_latex_from_ann_file(pdf_path)
 	file = open("muout.txt", "w")
-	for latex in latex_list:
-		file.write(latex.encode('utf-8'))
-		file.write('\n')
+	file.write("\n\\newline\n".join([latex.encode('utf-8') for latex in latex_list]))
