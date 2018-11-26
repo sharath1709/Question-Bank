@@ -405,7 +405,7 @@ def get_latex_from_ann_file(pdf_path):
 				ann = annot.getObject()
 				if ann["/Subtype"] == NameObject("/Square"):
 					LT_list = get_LT_list_from_box(layout[i], ann["/Rect"][0], ann["/Rect"][2], ann["/Rect"][1], ann["/Rect"][3])
-					latex_list.append(get_latex_from_LT(LT_list, i, image_res).replace("\\textrightarrow", "\\rightarrow"))
+					latex_list.append(get_latex_from_LT(LT_list, i, image_res).replace("{\\textrightarrow}", "${\\rightarrow}$"))
 	return latex_list
 
 if __name__ == '__main__':
