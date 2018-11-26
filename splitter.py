@@ -392,6 +392,16 @@ def auto_ques_annot(layout, regs, infile, outfile):
 	ques_annots = get_annots_for_ques(ques_boxes)
 	add_annots(infile, ques_annots, outfile)
 
+def compare_y(a, b):
+	y1 = a.getObject()["/Rect"][1]
+	y2 = b.getObject()["/Rect"][1]
+	if y1 < y2:
+		return 1
+	elif y1 == y2:
+		return 0
+	else: 
+		return -1
+
 def get_latex_from_ann_file(pdf_path):
 	pdfInput = PdfFileReader(open(pdf_path, "rb"))
 	image_res = get_image_res(pdfInput)
@@ -401,6 +411,7 @@ def get_latex_from_ann_file(pdf_path):
 		page = pdfInput.getPage(i)
 		if "/Annots" in page:
 			annot_list = page[NameObject("/Annots")]
+			annot_list.sort(compare_y)
 			for annot in annot_list:
 				ann = annot.getObject()
 				if ann["/Subtype"] == NameObject("/Square"):
@@ -416,15 +427,15 @@ if __name__ == '__main__':
 	if len(sys.argv) > 2:
 		if sys.argv[2] == "0":
 			regs = [re.compile(pattern) for pattern in question_regex_patterns]
-			auto_ques_annot(layout, regs, pdf_path, 'test_split.pdf')
+			auto_ques_annot(layout, regs, pdf_path, 'annotated.pdf')
 		elif sys.argv[2] == "1":
 			latex_list = get_latex_from_ann_file(pdf_path)
-			file = open("muout.txt", "w")
+			file = open("latex.txt", "w")
 			file.write("\n\\bigskip\n\\newline\n".join([latex.encode('utf-8') for latex in latex_list]))
 	else:
 		regs = [re.compile(pattern) for pattern in question_regex_patterns]
-		auto_ques_annot(layout, regs, pdf_path, 'test_split.pdf')
-		pdf_path = 'test_split.pdf'
+		auto_ques_annot(layout, regs, pdf_path, 'annotated.pdf')
+		pdf_path = 'annotated.pdf'
 		latex_list = get_latex_from_ann_file(pdf_path)
-		file = open("muout.txt", "w")
+		file = open("latex.txt", "w")
 		file.write("\n\\bigskip\n\\newline\n".join([latex.encode('utf-8') for latex in latex_list]))
