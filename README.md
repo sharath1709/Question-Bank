@@ -6,8 +6,8 @@ It extracts the questions and corresponding images(if any) and stores them as a 
   
 Usage:  
 To create an annotated pdf from the question paper. This creates an annotated pdf in the same directory.  
-  python2 splitter.py <pdf-file> 0  
+    python2 splitter.py <pdf-file> 0  
 To extract the text and images from the annotated pdf.  
-  python2 splitter.py <annotated-pdf-file> 1  
+    python2 splitter.py <annotated-pdf-file> 1  
 This creates a text file containing the latex format of the extracted questions.  
 It also creates a folder with all the referenced images.  
